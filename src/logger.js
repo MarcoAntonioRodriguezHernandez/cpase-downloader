@@ -74,15 +74,21 @@ export function logPeriodo(año, mes) {
 }
 
 export function logCFDI(nombre, indice, tiempoSegundos) {
-    console.log(chalk.green(`   ✓ ${nombre}_${indice} (${tiempoSegundos}s)`));
+    const mensaje = `   ✓ ${nombre}_${indice} (${tiempoSegundos}s)`;
+    console.log(chalk.green(mensaje));
+    escribirLog(`${timestamp()} | ✓ CFDI      | ${nombre}_${indice} | ${tiempoSegundos}s`);
 }
 
 export function logFinProveedor(razonSocial, tiempoSegundos) {
-    console.log(chalk.magenta(`\n✅ Proveedor completado: ${razonSocial} - Tiempo total: ${tiempoSegundos}s`));
+    const mensaje = `\n✅ Proveedor completado: ${razonSocial} - Tiempo total: ${tiempoSegundos}s`;
+    console.log(chalk.magenta(mensaje));
+    escribirLog(`${timestamp()} | ✅ PROVEEDOR | ${razonSocial} | TIEMPO TOTAL: ${tiempoSegundos}s`);
 }
 
 export function logFinEmpresa(nombre, tiempoSegundos) {
-    console.log(chalk.green.bold(`\n🎉 EMPRESA COMPLETADA: ${nombre} - Tiempo total: ${tiempoSegundos}s\n`));
+    const mensaje = `\n🎉 EMPRESA COMPLETADA: ${nombre} - Tiempo total: ${tiempoSegundos}s\n`;
+    console.log(chalk.green.bold(mensaje));
+    escribirLog(`${timestamp()} | 🎉 EMPRESA  | ${nombre} | TIEMPO TOTAL: ${tiempoSegundos}s`);
 }
 
 export function logSinDatos() {
