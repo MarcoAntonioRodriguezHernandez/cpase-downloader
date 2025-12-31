@@ -103,6 +103,7 @@ async function descargarCFDI({
     const indice = contadorPorEmpleado[nombreBase];
 
     const cookies = obtenerCookies(client);
+    try {
 
     /* ================= HELPER PDF ================= */
 
@@ -146,6 +147,9 @@ async function descargarCFDI({
     );
 
     logCFDI(nombreBase, indice);
+    } catch (error) {
+        logError(`Error descargando CFDI ${nombreBase}_${indice} (UUID: ${uuid})`, error);
+    }
 }
 
 /* ======================================================
