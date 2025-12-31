@@ -94,6 +94,7 @@ async function descargarCFDI({
      rfcProveedor,
      contadorPorEmpleado
  }) {
+    const inicioDescarga = Date.now();
     const uuid = cfdi.UUID;
     const pk = cfdi.pk_validacion;
 
@@ -102,56 +103,52 @@ async function descargarCFDI({
         .replace(/[^\w_]/g, "")
         .toUpperCase();
 
-    // 🔒 ÍNDICE ÚNICO POR APARICIÓN
     contadorPorEmpleado[nombreBase] ??= 0;
     contadorPorEmpleado[nombreBase]++;
     const indice = contadorPorEmpleado[nombreBase];
 
     const cookies = obtenerCookies(client);
+
     try {
+        // ✅ DESCARGAR LOS 3 ARCHIVOS EN PARALELO
+        await Promise.all([
+            // 1️⃣ Helper PDF
+            descargarXMLConPuppeteer(
+                `https://cpase.cpavision.mx/proveedor/servicios-especializados/helper/helper.php` +
+                `?uuid=${Buffer.from(uuid).toString("base64")}` +
+                `&empresaRfc=${Buffer.from(rfcProveedor).toString("base64")}` +
+                `&download=true`,
+                path.join(rutaDestino, `${nombreBase}_${indice}.pdf`),
+                cookies
+            ),
 
-    /* ================= HELPER PDF ================= */
+            // 2️⃣ XML
+            descargarXMLConPuppeteer(
+                `https://cpase.cpavision.mx/services/descargar-xml.php` +
+                `?file_name=${uuid}.xml&type=xml&emp=${EMPRESA_ID}`,
+                path.join(rutaDestino, `${nombreBase}_${indice}.xml`),
+                cookies
+            ),
 
-    const helperUrl =
-        `https://cpase.cpavision.mx/proveedor/servicios-especializados/helper/helper.php` +
-        `?uuid=${Buffer.from(uuid).toString("base64")}` +
-        `&empresaRfc=${Buffer.from(rfcProveedor).toString("base64")}` +
-        `&download=true`;
+            // 3️⃣ Recibo PDF (axios)
+            (async () => {
+                const pdf = await client.get(
+                    `/services/dictamen-pdf.php?id=${pk}&emp=${EMPRESA_ID}`,
+                    { responseType: "arraybuffer" }
+                );
+                fs.writeFileSync(
+                    path.join(
+                        rutaDestino,
+                        `${nombreBase}_verificador_recibo_nomina_${indice}.pdf`
+                    ),
+                    pdf.data
+                );
+            })()
+        ]);
 
-    await descargarXMLConPuppeteer(
-        helperUrl,
-        path.join(rutaDestino, `${nombreBase}_${indice}.pdf`),
-        cookies
-    );
+        const tiempoTotal = ((Date.now() - inicioDescarga) / 1000).toFixed(2);
+        logCFDI(nombreBase, indice, tiempoTotal);
 
-    /* ================= XML ================= */
-
-    const xmlUrl =
-        `https://cpase.cpavision.mx/services/descargar-xml.php` +
-        `?file_name=${uuid}.xml&type=xml&emp=${EMPRESA_ID}`;
-
-    await descargarXMLConPuppeteer(
-        xmlUrl,
-        path.join(rutaDestino, `${nombreBase}_${indice}.xml`),
-        cookies
-    );
-
-    /* ================= RECIBO PDF ================= */
-
-    const pdf = await client.get(
-        `/services/dictamen-pdf.php?id=${pk}&emp=${EMPRESA_ID}`,
-        { responseType: "arraybuffer" }
-    );
-
-    fs.writeFileSync(
-        path.join(
-            rutaDestino,
-            `${nombreBase}_verificador_recibo_nomina_${indice}.pdf`
-        ),
-        pdf.data
-    );
-
-    logCFDI(nombreBase, indice);
     } catch (error) {
         logError(`Error descargando CFDI ${nombreBase}_${indice} (UUID: ${uuid})`, error);
     }

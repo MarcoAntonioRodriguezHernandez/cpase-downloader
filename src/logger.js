@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import chalk from "chalk";
 
 /* ======================================================
    CONFIGURACIÓN
@@ -72,9 +73,16 @@ export function logPeriodo(año, mes) {
     log(linea);
 }
 
-export function logCFDI(nombreBase, indice) {
-    const linea = `${timestamp()} | 📄 CFDI     | ${nombreBase}_${indice} ✅`;
-    log(linea);
+export function logCFDI(nombre, indice, tiempoSegundos) {
+    console.log(chalk.green(`   ✓ ${nombre}_${indice} (${tiempoSegundos}s)`));
+}
+
+export function logFinProveedor(razonSocial, tiempoSegundos) {
+    console.log(chalk.magenta(`\n✅ Proveedor completado: ${razonSocial} - Tiempo total: ${tiempoSegundos}s`));
+}
+
+export function logFinEmpresa(nombre, tiempoSegundos) {
+    console.log(chalk.green.bold(`\n🎉 EMPRESA COMPLETADA: ${nombre} - Tiempo total: ${tiempoSegundos}s\n`));
 }
 
 export function logSinDatos() {

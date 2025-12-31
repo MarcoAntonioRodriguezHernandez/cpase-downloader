@@ -1,7 +1,7 @@
 import axios from "axios";
 import path from "path";
 import { descargarCFDISProveedor } from "./src/descargas.js";
-import {logEmpresa, logProveedor} from "./src/logger.js";
+import {logEmpresa, logFinEmpresa, logFinProveedor, logProveedor} from "./src/logger.js";
 import {seleccionarEmpresa} from "./src/menuEmpresa.js";
 
 // const EMPRESA_ID = "62660";
@@ -35,6 +35,7 @@ async function obtenerProveedores(empresaId) {
 }
 
 async function ejecutar() {
+    const inicioEmpresa = Date.now(); // ⏱️ Inicio del proceso completo
     const empresa = await seleccionarEmpresa();
 
     const EMPRESA_ID = empresa.empresa_id;
@@ -46,6 +47,7 @@ async function ejecutar() {
     const proveedores = await obtenerProveedores(EMPRESA_ID);
 
     for (const proveedor of proveedores) {
+        const inicioProveedor = Date.now(); // ⏱️ Inicio del proveedor
         logProveedor(proveedor.razon_social, proveedor.rfc);
 
         for (const año of AÑOS) {
@@ -62,7 +64,11 @@ async function ejecutar() {
                 });
             }
         }
+        const tiempoProveedor = ((Date.now() - inicioProveedor) / 1000).toFixed(2);
+        logFinProveedor(proveedor.razon_social, tiempoProveedor);
     }
+    const tiempoTotal = ((Date.now() - inicioEmpresa) / 1000).toFixed(2);
+    logFinEmpresa(NOMBRE_EMPRESA, tiempoTotal);
 }
 
 ejecutar().catch(console.error);
