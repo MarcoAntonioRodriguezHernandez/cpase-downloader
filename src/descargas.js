@@ -2,6 +2,12 @@ import fs from "fs";
 import path from "path";
 import { descargarXMLConPuppeteer } from "./browser.js";
 import { MESES, normalizarTexto } from "./utils.js";
+import {
+    logPeriodo,
+    logCFDI,
+    logSinDatos,
+    logError
+} from "./logger.js";
 
 export async function descargarCFDISProveedor({
       client,
@@ -13,6 +19,7 @@ export async function descargarCFDISProveedor({
       NOMBRE_EMPRESA,
       BASE_DIR
   }) {
+    logPeriodo(año, MESES[periodo]);
     const { rfc, razon_social } = proveedor;
 
     const { data } = await client.post(
@@ -27,7 +34,10 @@ export async function descargarCFDISProveedor({
         }
     );
 
-    if (!data?.length) return;
+    if (!data?.length) {
+        logSinDatos();
+        return;
+    }
 
     const rutaDestino = path.join(
         BASE_DIR,
@@ -40,6 +50,9 @@ export async function descargarCFDISProveedor({
     );
 
     fs.mkdirSync(rutaDestino, { recursive: true });
+
+    // 🧠 CONTADOR EN MEMORIA POR EMPLEADO
+    const contadorPorEmpleado = inicializarContadores(rutaDestino);
 
     for (const item of data) {
         const { data: cfdis } = await client.post(
@@ -56,23 +69,26 @@ export async function descargarCFDISProveedor({
                 cfdi,
                 rutaDestino,
                 EMPRESA_ID,
-                rfcProveedor: rfc
+                rfcProveedor: rfc,
+                contadorPorEmpleado
             });
         }
     }
 }
 
 /* ======================================================
-   DESCARGA INDIVIDUAL CON CONTADOR REAL
+   DESCARGA INDIVIDUAL
+   ✔ CONTADOR EN MEMORIA
 ====================================================== */
 
 async function descargarCFDI({
-                                 client,
-                                 cfdi,
-                                 rutaDestino,
-                                 EMPRESA_ID,
-                                 rfcProveedor
-                             }) {
+     client,
+     cfdi,
+     rutaDestino,
+     EMPRESA_ID,
+     rfcProveedor,
+     contadorPorEmpleado
+ }) {
     const uuid = cfdi.UUID;
     const pk = cfdi.pk_validacion;
 
@@ -81,7 +97,10 @@ async function descargarCFDI({
         .replace(/[^\w_]/g, "")
         .toUpperCase();
 
-    const indice = obtenerSiguienteIndice(rutaDestino, nombreBase);
+    // 🔒 ÍNDICE ÚNICO POR APARICIÓN
+    contadorPorEmpleado[nombreBase] ??= 0;
+    contadorPorEmpleado[nombreBase]++;
+    const indice = contadorPorEmpleado[nombreBase];
 
     const cookies = obtenerCookies(client);
 
@@ -126,31 +145,31 @@ async function descargarCFDI({
         pdf.data
     );
 
-    console.log(`✔ ${nombreBase}_${indice}`);
+    logCFDI(nombreBase, indice);
 }
 
 /* ======================================================
-   CONTADOR REAL POR EMPLEADO (FS-SAFE)
+   INICIALIZAR CONTADORES DESDE FS (UNA SOLA VEZ)
 ====================================================== */
 
-function obtenerSiguienteIndice(rutaDestino, nombreBase) {
-    if (!fs.existsSync(rutaDestino)) return 1;
+function inicializarContadores(rutaDestino) {
+    const contadores = {};
+
+    if (!fs.existsSync(rutaDestino)) return contadores;
 
     const archivos = fs.readdirSync(rutaDestino);
 
-    const regex = new RegExp(`^${nombreBase}_(\\d+)\\.`, "i");
-
-    let max = 0;
-
     for (const archivo of archivos) {
-        const match = archivo.match(regex);
-        if (match) {
-            const n = parseInt(match[1], 10);
-            if (n > max) max = n;
-        }
+        const match = archivo.match(/^(.+?)_(\d+)\.xml$/i);
+        if (!match) continue;
+
+        const nombre = match[1];
+        const indice = parseInt(match[2], 10);
+
+        contadores[nombre] = Math.max(contadores[nombre] ?? 0, indice);
     }
 
-    return max + 1;
+    return contadores;
 }
 
 /* ======================================================

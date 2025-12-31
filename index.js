@@ -1,6 +1,8 @@
 import axios from "axios";
 import path from "path";
 import { descargarCFDISProveedor } from "./src/descargas.js";
+import {logEmpresa, logProveedor} from "./src/logger.js";
+import {seleccionarEmpresa} from "./src/menuEmpresa.js";
 
 const EMPRESA_ID = "62660";
 const RFC_EMPRESA = "SEP100422AB7";
@@ -33,9 +35,19 @@ async function obtenerProveedores() {
 }
 
 async function ejecutar() {
-    const proveedores = await obtenerProveedores();
+    const empresa = await seleccionarEmpresa();
+
+    const EMPRESA_ID = empresa.empresa_id;
+    const RFC_EMPRESA = empresa.rfc;
+    const NOMBRE_EMPRESA = empresa.nombre;
+
+    logEmpresa(NOMBRE_EMPRESA);
+
+    const proveedores = await obtenerProveedores(EMPRESA_ID);
 
     for (const proveedor of proveedores) {
+        logProveedor(proveedor.razon_social, proveedor.rfc);
+
         for (const año of AÑOS) {
             for (const periodo of PERIODOS) {
                 await descargarCFDISProveedor({
