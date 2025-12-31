@@ -3,15 +3,24 @@ import fs from "fs";
 import path from "path";
 import { descargarXMLConPuppeteer } from "./src/browser.js";
 
-const XML_DIR = path.resolve("./xml");
-const PDF_DIR = path.resolve("./pdf");
+/* =====================================================
+   CONFIGURACIÓN GENERAL
+===================================================== */
 
-if (!fs.existsSync(XML_DIR)) {
-    fs.mkdirSync(XML_DIR, { recursive: true });
-}
+// Carpeta destino FINAL (plana)
+const BASE_DIR = path.resolve(
+    "./documentos/cotemar/nombre_cliente/nombre_subcliente/repse/2021/septiembre/cfdis_de_nomina"
+);
 
-if (!fs.existsSync(PDF_DIR)) {
-    fs.mkdirSync(PDF_DIR, { recursive: true });
+fs.mkdirSync(BASE_DIR, { recursive: true });
+
+// Normalizar nombre de empleado
+function normalizarNombre(nombre) {
+    return nombre
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^\w_]/g, "")
+        .toUpperCase();
 }
 
 // Axios SOLO para servicios backend
@@ -30,7 +39,11 @@ const client = axios.create({
 
 // Cookies de sesión
 client.defaults.headers.Cookie =
-    "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=ab557041b98b4ab0919867c90f3c67df";
+    "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=c0fd5770fd694470bd1c776a7d879373";
+
+/* =====================================================
+   FUNCIÓN PRINCIPAL
+===================================================== */
 
 async function descargar() {
     const { data: cfdis } = await client.post(
@@ -40,54 +53,67 @@ async function descargar() {
             allPks: "MTAyODcyODE4NzUsMTAyODcyODE4NzY="
         }
     );
+
     const cookies = obtenerCookiesParaPuppeteer();
+    const contadorPorEmpleado = {};
 
     for (const cfdi of cfdis) {
         const uuid = cfdi.UUID;
         const pk = cfdi.pk_validacion;
+        const nombreEmpleado = normalizarNombre(cfdi.Nombre);
+
+        // Índice incremental por empleado
+        contadorPorEmpleado[nombreEmpleado] ??= 0;
+        contadorPorEmpleado[nombreEmpleado]++;
+        const indice = contadorPorEmpleado[nombreEmpleado];
 
         const uuidBase64 = Buffer.from(uuid).toString("base64");
         const empresaRfcBase64 = Buffer.from("RORA4705033Q7").toString("base64");
 
-        // 🔹 XML ORIGINAL (helper.php) — Puppeteer
+        /* ================= XML HELPER ================= */
         const helperUrl =
             `https://cpase.cpavision.mx/proveedor/servicios-especializados/helper/helper.php` +
             `?uuid=${uuidBase64}&empresaRfc=${empresaRfcBase64}&download=true`;
 
-
         await descargarXMLConPuppeteer(
             helperUrl,
-            path.join(XML_DIR, `${uuid}_helper.pdf`),
+            path.join(BASE_DIR, `${nombreEmpleado}_${indice}_helper.pdf`),
             cookies
         );
 
-        // 🔹 XML PROCESADO (descargar-xml.php) — Puppeteer
+        /* ================= XML PROCESADO ================= */
         const procesadoUrl =
             `https://cpase.cpavision.mx/services/descargar-xml.php` +
             `?file_name=${uuid}.xml&type=xml&emp=62660`;
 
         await descargarXMLConPuppeteer(
             procesadoUrl,
-            path.join(XML_DIR, `${uuid}_procesado.xml`),
+            path.join(BASE_DIR, `${nombreEmpleado}_${indice}.xml`),
             cookies
         );
 
-        // 🔹 PDF (dictamen) — Axios
+        /* ================= PDF ================= */
         const pdf = await client.get(
             `/services/dictamen-pdf.php?id=${pk}&emp=62660`,
             { responseType: "arraybuffer" }
         );
 
         fs.writeFileSync(
-            path.join(PDF_DIR, `${uuid}.pdf`),
+            path.join(
+                BASE_DIR,
+                `${nombreEmpleado}_verificador_recibo_nomina_${indice}.pdf`
+            ),
             pdf.data
         );
 
-        console.log(`Descargadas las 3 acciones de: ${uuid}`);
+        console.log(`✔ Guardado: ${nombreEmpleado} (${indice})`);
     }
 }
 
-descargar().catch(console.error);
+/* =====================================================
+   COOKIES PARA PUPPETEER
+===================================================== */
+
 function obtenerCookiesParaPuppeteer() {
     const raw = client.defaults.headers.Cookie;
 
@@ -103,3 +129,5 @@ function obtenerCookiesParaPuppeteer() {
         };
     });
 }
+
+descargar().catch(console.error);
