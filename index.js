@@ -5,10 +5,11 @@ import {logEmpresa, logFinEmpresa, logFinProveedor, logProveedor} from "./src/lo
 import {seleccionarEmpresa} from "./src/menuEmpresa.js";
 import { debeEjecutar } from "./src/resume.js";
 
-// const EMPRESA_ID = "62660";
-// const RFC_EMPRESA = "SEP100422AB7";
-// const NOMBRE_EMPRESA = "Servicios de Extraccion Petrolera Lifting de Mexico SA de CV";
+/* ======================================================
+    CONFIGURACIÓN GLOBAL
+    ====================================================== */
 
+// Directorio base donde se guardarán todos los documentos descargados
 const BASE_DIR = path.resolve("./documentos/cotemar");
 
 /* ======================================================
@@ -17,48 +18,80 @@ const BASE_DIR = path.resolve("./documentos/cotemar");
     ====================================================== */
 
 const MODO_EJECUCION = {
+    // Tipo de ejecución: "TODOS" descarga todos los proveedores
+    // "UN_PROVEEDOR" descarga solo un proveedor específico
     tipo: "TODOS",
-    // "TODOS" | "UN_PROVEEDOR"
 
     proveedorRFC: null, // requerido si tipo === "UN_PROVEEDOR"
     año: null,          // opcional
     mes: null           // opcional (0-11)
 };
 
+/**
+ * Filtra la lista de proveedores según el modo de ejecución
+ * @param {Array} proveedores - Lista completa de proveedores
+ * @param {Object} modo - Configuración del modo de ejecución
+ * @returns {Array} - Proveedores filtrados
+ */
 function filtrarProveedores(proveedores, modo) {
     if (modo.tipo === "UN_PROVEEDOR") {
+        // Retorna solo el proveedor que coincida con el RFC especificado
         return proveedores.filter(
             p => p.rfc === modo.proveedorRFC
         );
     }
+    // Retorna todos los proveedores
     return proveedores;
 }
 
+/**
+ * Obtiene los años a procesar según el modo de ejecución
+ * @param {Object} modo - Configuración del modo de ejecución
+ * @returns {Array} - Lista de años a procesar
+ */
 function obtenerAños(modo) {
+    // Si se especificó un año, procesar solo ese año
     if (modo.año !== null) return [modo.año];
+    // Si no, procesar todos los años configurados
     return AÑOS;
 }
 
+/**
+ * Obtiene los períodos (meses) a procesar según el modo de ejecución
+ * @param {Object} modo - Configuración del modo de ejecución
+ * @returns {Array} - Lista de períodos (0-11) a procesar
+ */
 function obtenerPeriodos(modo) {
+    // Si se especificó un mes, procesar solo ese mes
     if (modo.mes !== null) return [modo.mes];
+    // Si no, procesar todos los meses del año
     return PERIODOS;
 }
 
-
 /* ======================================================
-    IMPORTANTE, REANUDACION DE DESCARGAS OPCIONAL
-    Si se desea reanudar descargas, llenar los datos a continuación
-    De lo contrario, dejar el objeto RESUME con sus atributos como null
+    CONFIGURACIÓN DE REANUDACIÓN
+    Permite continuar desde un punto específico si hubo
+    una interrupción en el proceso
     ====================================================== */
 const RESUME = {
+    // RFC del proveedor desde donde reanudar (null = no reanudar)
     proveedorRFC: "RORA4705033Q7", // ALEJANDRO RODRIGUEZ REYES
     año: 2023,
     mes: 6 // julio (0-based)
 };
 
+/* ======================================================
+    CONFIGURACIÓN DE PERÍODOS A PROCESAR
+    ====================================================== */
 
 const AÑOS = [2021, 2022, 2023, 2024, 2025];
 const PERIODOS = [...Array(12).keys()]; // 0-11
+
+/* ======================================================
+    CLIENTE HTTP CONFIGURADO
+    Instancia de Axios con configuración específica para
+    conectarse a la plataforma CPASE
+    ====================================================== */
 
 const client = axios.create({
     baseURL: "https://cpase.cpavision.mx",
@@ -70,16 +103,33 @@ const client = axios.create({
     }
 });
 
+// Cookie de sesión necesaria para autenticación
+// IMPORTANTE: Esta cookie debe estar activa/válida
 client.defaults.headers.Cookie =
     "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=e352107d032c4731a7782a4a58d57763";
 
+/* ======================================================
+    FUNCIÓN PARA OBTENER PROVEEDORES
+    ====================================================== */
+
+/**
+ * Obtiene la lista de proveedores activos de una empresa
+ * @param {string} empresaId - ID de la empresa en el sistema
+ * @returns {Promise<Array>} - Lista de proveedores
+ */
 async function obtenerProveedores(empresaId) {
     const { data } = await client.post(
         "/proveedor/dashboard/services/pagination.php",
         { empresa: empresaId, estatus: 1 }
     );
+    // Extraer los proveedores de la respuesta
     return data.data.items;
 }
+
+/* ======================================================
+    FUNCIÓN PRINCIPAL DE EJECUCIÓN
+    Orquesta todo el proceso de descarga
+    ====================================================== */
 
 async function ejecutar() {
     const inicioEmpresa = Date.now(); // ⏱️ Inicio del proceso completo
@@ -91,17 +141,21 @@ async function ejecutar() {
 
     logEmpresa(NOMBRE_EMPRESA);
 
+    // 🔍 Obtener lista de proveedores de esta empresa
     const proveedores = await obtenerProveedores(EMPRESA_ID);
+    // Aplicar filtros según modo de ejecución
     const proveedoresFiltrados = filtrarProveedores(proveedores, MODO_EJECUCION);
     const años = obtenerAños(MODO_EJECUCION);
     const periodos = obtenerPeriodos(MODO_EJECUCION);
 
+    // ♻️ ITERAR SOBRE CADA PROVEEDOR
     for (const proveedor of proveedoresFiltrados) {
         const inicioProveedor = Date.now(); // ⏱️ Inicio del proveedor
         logProveedor(proveedor.razon_social, proveedor.rfc);
 
         for (const año of años) {
             for (const periodo of periodos) {
+                // ⚙️ Verificar si debe ejecutarse según configuración RESUME
                 if (!debeEjecutar({
                     proveedor,
                     año,
@@ -130,4 +184,9 @@ async function ejecutar() {
     logFinEmpresa(NOMBRE_EMPRESA, tiempoTotal);
 }
 
+/* ======================================================
+    INICIO DEL PROGRAMA
+    ====================================================== */
+
+// Ejecutar función principal y capturar errores no manejados
 ejecutar().catch(console.error);
