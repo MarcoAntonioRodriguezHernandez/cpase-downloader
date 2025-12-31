@@ -22,7 +22,21 @@ const LOG_FILE = path.join(
 ====================================================== */
 
 function timestamp() {
-    return new Date().toISOString().replace("T", " ").substring(0, 19);
+    const fecha = new Date().toLocaleString("es-MX", {
+        timeZone: "America/Mexico_City",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+    });
+
+    const [fechaParte, horaParte] = fecha.split(", ");
+    const [dia, mes, año] = fechaParte.split("/");
+
+    return `${año}-${mes}-${dia} ${horaParte}`;
 }
 
 function escribirLog(linea) {
