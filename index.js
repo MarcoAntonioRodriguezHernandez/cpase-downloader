@@ -1,133 +1,56 @@
 import axios from "axios";
-import fs from "fs";
 import path from "path";
-import { descargarXMLConPuppeteer } from "./src/browser.js";
+import { descargarCFDISProveedor } from "./src/descargas.js";
 
-/* =====================================================
-   CONFIGURACIÓN GENERAL
-===================================================== */
+const EMPRESA_ID = "62660";
+const RFC_EMPRESA = "SEP100422AB7";
+const NOMBRE_EMPRESA = "Servicios de Extraccion Petrolera Lifting de Mexico SA de CV";
 
-// Carpeta destino FINAL (plana)
-const BASE_DIR = path.resolve(
-    "./documentos/cotemar/nombre_cliente/nombre_subcliente/repse/2021/septiembre/cfdis_de_nomina"
-);
+const BASE_DIR = path.resolve("./documentos/cotemar");
 
-fs.mkdirSync(BASE_DIR, { recursive: true });
+const AÑOS = [2021, 2022, 2023, 2024, 2025];
+const PERIODOS = [...Array(12).keys()]; // 0-11
 
-// Normalizar nombre de empleado
-function normalizarNombre(nombre) {
-    return nombre
-        .trim()
-        .replace(/\s+/g, "_")
-        .replace(/[^\w_]/g, "")
-        .toUpperCase();
-}
-
-// Axios SOLO para servicios backend
 const client = axios.create({
     baseURL: "https://cpase.cpavision.mx",
     withCredentials: true,
     headers: {
-        "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept":
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0",
         "Referer":
             "https://cpase.cpavision.mx/proveedor/dashboard/proveedoresMes/index.php?emp=62660"
     }
 });
 
-// Cookies de sesión
 client.defaults.headers.Cookie =
     "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=c0fd5770fd694470bd1c776a7d879373";
 
-/* =====================================================
-   FUNCIÓN PRINCIPAL
-===================================================== */
-
-async function descargar() {
-    const { data: cfdis } = await client.post(
-        "/services/getCFDISCargados.php",
-        {
-            detalleId: "5097819",
-            allPks: "MTAyODcyODE4NzUsMTAyODcyODE4NzY="
-        }
+async function obtenerProveedores() {
+    const { data } = await client.post(
+        "/proveedor/dashboard/services/pagination.php",
+        { empresa: EMPRESA_ID, estatus: 1 }
     );
+    return data.data.items;
+}
 
-    const cookies = obtenerCookiesParaPuppeteer();
-    const contadorPorEmpleado = {};
+async function ejecutar() {
+    const proveedores = await obtenerProveedores();
 
-    for (const cfdi of cfdis) {
-        const uuid = cfdi.UUID;
-        const pk = cfdi.pk_validacion;
-        const nombreEmpleado = normalizarNombre(cfdi.Nombre);
-
-        // Índice incremental por empleado
-        contadorPorEmpleado[nombreEmpleado] ??= 0;
-        contadorPorEmpleado[nombreEmpleado]++;
-        const indice = contadorPorEmpleado[nombreEmpleado];
-
-        const uuidBase64 = Buffer.from(uuid).toString("base64");
-        const empresaRfcBase64 = Buffer.from("RORA4705033Q7").toString("base64");
-
-        /* ================= XML HELPER ================= */
-        const helperUrl =
-            `https://cpase.cpavision.mx/proveedor/servicios-especializados/helper/helper.php` +
-            `?uuid=${uuidBase64}&empresaRfc=${empresaRfcBase64}&download=true`;
-
-        await descargarXMLConPuppeteer(
-            helperUrl,
-            path.join(BASE_DIR, `${nombreEmpleado}_${indice}_helper.pdf`),
-            cookies
-        );
-
-        /* ================= XML PROCESADO ================= */
-        const procesadoUrl =
-            `https://cpase.cpavision.mx/services/descargar-xml.php` +
-            `?file_name=${uuid}.xml&type=xml&emp=62660`;
-
-        await descargarXMLConPuppeteer(
-            procesadoUrl,
-            path.join(BASE_DIR, `${nombreEmpleado}_${indice}.xml`),
-            cookies
-        );
-
-        /* ================= PDF ================= */
-        const pdf = await client.get(
-            `/services/dictamen-pdf.php?id=${pk}&emp=62660`,
-            { responseType: "arraybuffer" }
-        );
-
-        fs.writeFileSync(
-            path.join(
-                BASE_DIR,
-                `${nombreEmpleado}_verificador_recibo_nomina_${indice}.pdf`
-            ),
-            pdf.data
-        );
-
-        console.log(`✔ Guardado: ${nombreEmpleado} (${indice})`);
+    for (const proveedor of proveedores) {
+        for (const año of AÑOS) {
+            for (const periodo of PERIODOS) {
+                await descargarCFDISProveedor({
+                    client,
+                    proveedor,
+                    año,
+                    periodo,
+                    EMPRESA_ID,
+                    RFC_EMPRESA,
+                    NOMBRE_EMPRESA,
+                    BASE_DIR
+                });
+            }
+        }
     }
 }
 
-/* =====================================================
-   COOKIES PARA PUPPETEER
-===================================================== */
-
-function obtenerCookiesParaPuppeteer() {
-    const raw = client.defaults.headers.Cookie;
-
-    return raw.split(";").map(c => {
-        const [name, ...rest] = c.trim().split("=");
-        return {
-            name,
-            value: rest.join("="),
-            domain: "cpase.cpavision.mx",
-            path: "/",
-            httpOnly: true,
-            secure: true
-        };
-    });
-}
-
-descargar().catch(console.error);
+ejecutar().catch(console.error);
