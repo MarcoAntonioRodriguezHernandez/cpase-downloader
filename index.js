@@ -4,9 +4,9 @@ import { descargarCFDISProveedor } from "./src/descargas.js";
 import {logEmpresa, logProveedor} from "./src/logger.js";
 import {seleccionarEmpresa} from "./src/menuEmpresa.js";
 
-const EMPRESA_ID = "62660";
-const RFC_EMPRESA = "SEP100422AB7";
-const NOMBRE_EMPRESA = "Servicios de Extraccion Petrolera Lifting de Mexico SA de CV";
+// const EMPRESA_ID = "62660";
+// const RFC_EMPRESA = "SEP100422AB7";
+// const NOMBRE_EMPRESA = "Servicios de Extraccion Petrolera Lifting de Mexico SA de CV";
 
 const BASE_DIR = path.resolve("./documentos/cotemar");
 
@@ -24,12 +24,12 @@ const client = axios.create({
 });
 
 client.defaults.headers.Cookie =
-    "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=c0fd5770fd694470bd1c776a7d879373";
+    "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=a2acb65d71d340e0b76fe796c51ce0cd";
 
-async function obtenerProveedores() {
+async function obtenerProveedores(empresaId) {
     const { data } = await client.post(
         "/proveedor/dashboard/services/pagination.php",
-        { empresa: EMPRESA_ID, estatus: 1 }
+        { empresa: empresaId, estatus: 1 }
     );
     return data.data.items;
 }

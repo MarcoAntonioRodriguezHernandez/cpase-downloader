@@ -8,6 +8,7 @@ import {
     logSinDatos,
     logError
 } from "./logger.js";
+import {ejecutarConPool} from "./pool.js";
 
 export async function descargarCFDISProveedor({
       client,
@@ -63,16 +64,20 @@ export async function descargarCFDISProveedor({
             }
         );
 
-        for (const cfdi of cfdis) {
-            await descargarCFDI({
-                client,
-                cfdi,
-                rutaDestino,
-                EMPRESA_ID,
-                rfcProveedor: rfc,
-                contadorPorEmpleado
-            });
-        }
+        await ejecutarConPool(
+            cfdis,
+            3, // ← CONCURRENCIA (2 o 3 recomendado)
+            (cfdi) =>
+                descargarCFDI({
+                    client,
+                    cfdi,
+                    rutaDestino,
+                    EMPRESA_ID,
+                    rfcProveedor: rfc,
+                    contadorPorEmpleado
+                })
+        );
+
     }
 }
 

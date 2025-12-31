@@ -9,6 +9,7 @@
     "axios": "^1.13.2",
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.4.5",
+    "inquirer": "^8.2.7",
     "p-limit": "^5.0.0",
     "puppeteer": "^23.11.1"
   },
