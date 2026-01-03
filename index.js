@@ -75,9 +75,9 @@ function obtenerPeriodos(modo) {
     ====================================================== */
 const RESUME = {
     // RFC del proveedor desde donde reanudar (null = no reanudar)
-    proveedorRFC: "RORA4705033Q7", // ALEJANDRO RODRIGUEZ REYES
-    año: 2023,
-    mes: 6 // julio (0-based)
+    proveedorRFC: null, // ALEJANDRO RODRIGUEZ REYES
+    año: null,
+    mes: null // julio (0-based)
 };
 
 /* ======================================================
