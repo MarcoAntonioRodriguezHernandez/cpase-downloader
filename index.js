@@ -18,11 +18,24 @@ const BASE_DIR = path.resolve("./documentos/cotemar");
     ====================================================== */
 
 const MODO_EJECUCION = {
-    // Tipo de ejecución: "TODOS" descarga todos los proveedores
-    // "UN_PROVEEDOR" descarga solo un proveedor específico
-    tipo: "TODOS",
+    // Tipo de ejecución:
+    // "TODOS" - descarga todos los proveedores
+    // "UN_PROVEEDOR" - descarga solo un proveedor específico
+    // "LISTA_PROVEEDORES" - descarga solo los proveedores de la lista
+    // "REVISION_NOMBRES" - revisa nombres de carpetas sin descargar
+    tipo: "REVISION_NOMBRES",
 
     proveedorRFC: null, // requerido si tipo === "UN_PROVEEDOR"
+    listaProveedoresRFC: [        // requerido si tipo === "LISTA_PROVEEDORES"
+        "SPA961227MPA",
+        "SSI090128RP0",
+        "STI960112955",
+        "SDO120424M87",
+        "SSU120314L85",
+        "SST151113BB2",
+        "SSE131212C67",
+        "SIM1710305W4",
+    ],
     año: null,          // opcional
     mes: null           // opcional (0-11)
 };
@@ -38,6 +51,12 @@ function filtrarProveedores(proveedores, modo) {
         // Retorna solo el proveedor que coincida con el RFC especificado
         return proveedores.filter(
             p => p.rfc === modo.proveedorRFC
+        );
+    }
+    if (modo.tipo === "LISTA_PROVEEDORES") {
+        // Retorna solo los proveedores que estén en la lista de RFCs
+        return proveedores.filter(
+            p => modo.listaProveedoresRFC.includes(p.rfc)
         );
     }
     // Retorna todos los proveedores
@@ -75,9 +94,9 @@ function obtenerPeriodos(modo) {
     ====================================================== */
 const RESUME = {
     // RFC del proveedor desde donde reanudar (null = no reanudar)
-    proveedorRFC: null, // ALEJANDRO RODRIGUEZ REYES
-    año: null,
-    mes: null // julio (0-based)
+    proveedorRFC: "SSE131212C67", // ALEJANDRO RODRIGUEZ REYES
+    año: 2024,
+    mes: 4 // julio (0-based)
 };
 
 /* ======================================================
@@ -106,7 +125,7 @@ const client = axios.create({
 // Cookie de sesión necesaria para autenticación
 // IMPORTANTE: Esta cookie debe estar activa/válida
 client.defaults.headers.Cookie =
-    "PHPSESSID=uas3vlkpskg2ku5hf3tchufn8n; state=e352107d032c4731a7782a4a58d57763";
+    "PHPSESSID=ima6u3052e0dgb732v8spp06qh; state=13b3b6873a894813b2087230b630d862";
 
 /* ======================================================
     FUNCIÓN PARA OBTENER PROVEEDORES
