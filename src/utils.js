@@ -21,9 +21,13 @@ export function normalizarRazonSocialFiscal(texto) {
         .replace(/,/g, "")
         .replace(/\./g, "_")
         .replace(/\s+/g, "_")
+        .replace(/-+/g, "_")
         .replace(/[^a-zA-Z0-9_]/g, "")
         .replace(/_+/g, "_")
         .trim()
+        .replace(/^_+|_+$/g, "")
+        .replace(/_{2,}/g, '_')
+        .replace(/^_|_$/g, '')
         .toLowerCase();
 }
 

@@ -1,6 +1,9 @@
 // src/auditoria.js
- import { normalizarTexto } from "./utils.js";
+import { normalizarTexto, normalizarRazonSocialFiscal } from "./utils.js";
 import {debeEjecutar} from "./resume.js";
+import path from "path";
+import fs from "fs";
+import {escanearCarpetaLocal} from "./escaneo-local.js";
 
  /**
   * Realiza una auditoría de empleados a descargar por empresa
@@ -125,28 +128,154 @@ import {debeEjecutar} from "./resume.js";
   * @param {Array} resultados - Resultados de la auditoría
   * @param {string} nombreEmpresa - Nombre de la empresa
   */
- export function exportarAuditoria(resultados, nombreEmpresa) {
-     const fs = require('fs');
-     const path = require('path');
+export function exportarAuditoria(resultados, nombreEmpresa) {
+    const fecha = new Date().toISOString().split('T')[0];
+    const nombreArchivo = `auditoria_${normalizarTexto(nombreEmpresa)}_${fecha}.json`;
+    const rutaArchivo = path.resolve(`./auditorias/${nombreArchivo}`);
 
-     const fecha = new Date().toISOString().split('T')[0];
-     const nombreArchivo = `auditoria_${normalizarTexto(nombreEmpresa)}_${fecha}.json`;
-     const rutaArchivo = path.resolve(`./auditorias/${nombreArchivo}`);
+    // Crear directorio si no existe
+    fs.mkdirSync(path.dirname(rutaArchivo), { recursive: true });
 
-     // Crear directorio si no existe
-     fs.mkdirSync(path.dirname(rutaArchivo), { recursive: true });
+    // Resumen
+    const resumen = {
+        empresa: nombreEmpresa,
+        fecha,
+        totalProveedores: [...new Set(resultados.map(r => r.proveedorRFC))].length,
+        totalRegistros: resultados.length,
+        totalEmpleados: resultados.reduce((sum, r) => sum + r.cantidadEmpleados, 0),
+        detalle: resultados
+    };
 
-     // Resumen
-     const resumen = {
-         empresa: nombreEmpresa,
-         fecha,
-         totalProveedores: [...new Set(resultados.map(r => r.proveedorRFC))].length,
-         totalRegistros: resultados.length,
-         totalEmpleados: resultados.reduce((sum, r) => sum + r.cantidadEmpleados, 0),
-         detalle: resultados
-     };
+    fs.writeFileSync(rutaArchivo, JSON.stringify(resumen, null, 2));
 
-     fs.writeFileSync(rutaArchivo, JSON.stringify(resumen, null, 2));
+    console.log(`\n💾 Auditoría exportada: ${rutaArchivo}`);
+}
 
-     console.log(`\n💾 Auditoría exportada: ${rutaArchivo}`);
- }
+/**
+ * Compara empleados esperados vs archivos en carpeta local
+ */
+
+export async function compararConCarpetaLocal({
+    baseDir,
+    esperados,
+    NOMBRE_EMPRESA
+}) {
+    const faltantes = [];
+    let totalRevisados = 0;
+    let totalEncontrados = 0;
+
+    const nombreEmpresaNormalizado = normalizarTexto(NOMBRE_EMPRESA);
+
+    console.log(`\n🔍 Comparando con carpeta local: ${baseDir}\n`);
+
+    for (const registro of esperados) {
+        const rutaEsperada = [
+            nombreEmpresaNormalizado,
+            normalizarRazonSocialFiscal(registro.proveedor),
+            'repse',
+            String(registro.año),
+            registro.mesNombre,
+            'cfdis_de_nomina'
+        ];
+
+        const archivosEnCarpeta = escanearCarpetaLocal(baseDir, rutaEsperada);
+        const rutaCompleta = path.join(baseDir, ...rutaEsperada);
+
+        // Contar ocurrencias de cada empleado
+        const conteoEmpleados = {};
+        const indiceActual = {}; // Rastrear índice actual para cada empleado
+
+        registro.empleados.forEach(emp => {
+            if (!indiceActual[emp.nombre]) {
+                indiceActual[emp.nombre] = 1;
+            }
+        });
+
+        let faltantesEnPeriodo = 0;
+
+        for (const empleado of registro.empleados) {
+            totalRevisados++;
+            const nombreBase = empleado.nombre
+                .replace(/\s+/g, "_")
+                .replace(/[^\w_]/g, "")
+                .toUpperCase();
+
+            const sufijo = indiceActual[empleado.nombre];
+
+            // 🔍 ARCHIVOS ESPERADOS (3 archivos por empleado)
+            const archivosEsperados = [
+                `${nombreBase}_${sufijo}.pdf`,
+                `${nombreBase}_${sufijo}.xml`,
+                `${nombreBase}_verificador_recibo_nomina_${sufijo}.pdf`
+            ];
+
+            const archivosFaltantes = archivosEsperados.filter(archivo =>
+                !archivosEnCarpeta.some(x => x.nombre === archivo)
+            );
+
+            if (archivosFaltantes.length > 0) {
+                faltantesEnPeriodo++;
+                faltantes.push({
+                    proveedor: registro.proveedor,
+                    año: registro.año,
+                    mes: registro.mesNombre,
+                    empleado: empleado.nombre,
+                    rfc: empleado.rfc,
+                    uuid: empleado.uuid,
+                    archivosFaltantes,
+                    rutaEsperada: rutaCompleta
+                });
+
+                console.log(`  ❌ ${empleado.nombre} (${empleado.rfc})`);
+                console.log(`     📁 Ruta: ${rutaCompleta}`);
+                archivosFaltantes.forEach(archivo => {
+                    console.log(`     ❌ Falta: ${archivo}`);
+                });
+                console.log(`     🔑 UUID: ${empleado.uuid}\n`);
+            } else {
+                totalEncontrados++;
+            }
+
+            // Decrementar índice para próxima ocurrencia
+            indiceActual[empleado.nombre]++;
+        }
+
+        const emoji = faltantesEnPeriodo === 0 ? "✅" : "⚠️";
+        const stats = `${registro.cantidadEmpleados - faltantesEnPeriodo}/${registro.cantidadEmpleados}`;
+
+        console.log(`${emoji} ${registro.proveedor} - ${registro.año}/${registro.mesNombre} (${stats})`);
+
+        if (faltantesEnPeriodo > 0) {
+            console.log(`   └─ Faltan ${faltantesEnPeriodo} empleado(s) con archivos incompletos\n`);
+        }
+    }
+
+    console.log(`\n${"=".repeat(80)}`);
+    console.log(`📊 RESUMEN DE COMPARACIÓN`);
+    console.log(`${"=".repeat(80)}`);
+    console.log(`✅ Empleados completos: ${totalEncontrados}/${totalRevisados}`);
+    console.log(`❌ Empleados con archivos faltantes: ${faltantes.length}`);
+    console.log(`${"=".repeat(80)}\n`);
+
+    return { faltantes };
+}
+
+export function exportarAuditoriaComparativa(faltantes, extras, nombreEmpresa) {
+    const fecha = new Date().toISOString().split('T')[0];
+    const nombreArchivo = `auditoria_drive_${normalizarTexto(nombreEmpresa)}_${fecha}.json`;
+    const rutaArchivo = path.resolve(`./auditorias/${nombreArchivo}`);
+
+    fs.mkdirSync(path.dirname(rutaArchivo), { recursive: true });
+
+    const reporte = {
+        empresa: nombreEmpresa,
+        fecha,
+        totalFaltantes: faltantes.length,
+        faltantes
+    };
+
+    fs.writeFileSync(rutaArchivo, JSON.stringify(reporte, null, 2));
+
+    console.log(`\n💾 Auditoría Drive exportada: ${rutaArchivo}`);
+    console.log(`❌ CFDIs faltantes: ${faltantes.length}`);
+}

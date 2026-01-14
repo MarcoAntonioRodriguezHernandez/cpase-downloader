@@ -7,7 +7,12 @@ import {seleccionarEmpresa} from "./src/menuEmpresa.js";
 import { debeEjecutar } from "./src/resume.js";
 import { revisarONombrarProveedores } from "./src/revisionNombres.js";
 import {normalizarTexto} from "./src/utils.js";
-import {auditarEmpleados, exportarAuditoria} from "./src/auditoria.js";
+import {
+    auditarEmpleados,
+    compararConCarpetaLocal,
+    exportarAuditoria,
+    exportarAuditoriaComparativa
+} from "./src/auditoria.js";
 
 /* ======================================================
     CONFIGURACIÓN GLOBAL
@@ -189,6 +194,14 @@ async function ejecutar() {
 
         // Exportar resultados
         exportarAuditoria(resultados, NOMBRE_EMPRESA);
+
+        const { faltantes } = await compararConCarpetaLocal({
+            baseDir: BASE_DIR, // ← ya está definido arriba
+            esperados: resultados,
+            NOMBRE_EMPRESA
+        });
+
+        exportarAuditoriaComparativa(faltantes, [], NOMBRE_EMPRESA);
 
         const tiempoTotal = ((Date.now() - inicioEmpresa) / 1000).toFixed(2);
         console.log(`\n⏱️ Tiempo total de auditoría: ${tiempoTotal}s`);
