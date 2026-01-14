@@ -1,9 +1,13 @@
+//index.js
 import axios from "axios";
 import path from "path";
 import { descargarCFDISProveedor } from "./src/descargas.js";
 import {logEmpresa, logFinEmpresa, logFinProveedor, logProveedor} from "./src/logger.js";
 import {seleccionarEmpresa} from "./src/menuEmpresa.js";
 import { debeEjecutar } from "./src/resume.js";
+import { revisarONombrarProveedores } from "./src/revisionNombres.js";
+import {normalizarTexto} from "./src/utils.js";
+import {auditarEmpleados, exportarAuditoria} from "./src/auditoria.js";
 
 /* ======================================================
     CONFIGURACIÓN GLOBAL
@@ -23,9 +27,11 @@ const MODO_EJECUCION = {
     // "UN_PROVEEDOR" - descarga solo un proveedor específico
     // "LISTA_PROVEEDORES" - descarga solo los proveedores de la lista
     // "REVISION_NOMBRES" - revisa nombres de carpetas sin descargar
-    tipo: "REVISION_NOMBRES",
+    // "RENOMBRAR_NOMBRES" - renombra carpetas con nombres incorrectos
+    // "AUDITORIA" - muestra empleados a descargar sin ejecutar descargas
+    tipo: "AUDITORIA",
 
-    proveedorRFC: null, // requerido si tipo === "UN_PROVEEDOR"
+    proveedorRFC: "EEN1902183S2", // requerido si tipo === "UN_PROVEEDOR"
     listaProveedoresRFC: [        // requerido si tipo === "LISTA_PROVEEDORES"
         "SPA961227MPA",
         "SSI090128RP0",
@@ -34,7 +40,7 @@ const MODO_EJECUCION = {
         "SSU120314L85",
         "SST151113BB2",
         "SSE131212C67",
-        "SIM1710305W4",
+        "SIM1710305W4"
     ],
     año: null,          // opcional
     mes: null           // opcional (0-11)
@@ -94,9 +100,9 @@ function obtenerPeriodos(modo) {
     ====================================================== */
 const RESUME = {
     // RFC del proveedor desde donde reanudar (null = no reanudar)
-    proveedorRFC: "SSE131212C67", // ALEJANDRO RODRIGUEZ REYES
+    proveedorRFC: null, // ALEJANDRO RODRIGUEZ REYES
     año: 2024,
-    mes: 4 // julio (0-based)
+    mes: null // julio (0-based)
 };
 
 /* ======================================================
@@ -125,7 +131,7 @@ const client = axios.create({
 // Cookie de sesión necesaria para autenticación
 // IMPORTANTE: Esta cookie debe estar activa/válida
 client.defaults.headers.Cookie =
-    "PHPSESSID=ima6u3052e0dgb732v8spp06qh; state=13b3b6873a894813b2087230b630d862";
+    "PHPSESSID=rf3ak4no4vhva5vvj2h22lv605; state=b6a8872514f54f5d81e88dcc9266897e";
 
 /* ======================================================
     FUNCIÓN PARA OBTENER PROVEEDORES
@@ -162,8 +168,70 @@ async function ejecutar() {
 
     // 🔍 Obtener lista de proveedores de esta empresa
     const proveedores = await obtenerProveedores(EMPRESA_ID);
+
     // Aplicar filtros según modo de ejecución
     const proveedoresFiltrados = filtrarProveedores(proveedores, MODO_EJECUCION);
+
+    if (MODO_EJECUCION.tipo === "AUDITORIA") {
+        const años = obtenerAños(MODO_EJECUCION);
+        const periodos = obtenerPeriodos(MODO_EJECUCION);
+
+        const resultados = await auditarEmpleados({
+            client,
+            proveedores: proveedoresFiltrados,
+            años,
+            periodos,
+            EMPRESA_ID,
+            RFC_EMPRESA, // ← AGREGAR
+            NOMBRE_EMPRESA,
+            resume: RESUME // ← AGREGAR RESUME
+        });
+
+        // Exportar resultados
+        exportarAuditoria(resultados, NOMBRE_EMPRESA);
+
+        const tiempoTotal = ((Date.now() - inicioEmpresa) / 1000).toFixed(2);
+        console.log(`\n⏱️ Tiempo total de auditoría: ${tiempoTotal}s`);
+        logFinEmpresa(NOMBRE_EMPRESA, tiempoTotal);
+
+        return;
+    }
+
+    /* ======================================================
+       🧾 MODO REVISIÓN / RENOMBRADO DE NOMBRES
+       ====================================================== */
+    if (
+        MODO_EJECUCION.tipo === "REVISION_NOMBRES" ||
+        MODO_EJECUCION.tipo === "RENOMBRAR_NOMBRES"
+    ) {
+        const accion =
+            MODO_EJECUCION.tipo === "RENOMBRAR_NOMBRES"
+                ? "RENOMBRAR"
+                : "REVISAR";
+
+        const resultados = await revisarONombrarProveedores({
+            proveedores: proveedoresFiltrados,
+            BASE_DIR: BASE_DIR, // ← nivel cotemar
+            accion
+        });
+
+
+        if (!resultados.length) {
+            console.log("✔ No se encontraron carpetas mal nombradas");
+        } else {
+            console.table(resultados);
+        }
+
+        const tiempoTotal = ((Date.now() - inicioEmpresa) / 1000).toFixed(2);
+        logFinEmpresa(NOMBRE_EMPRESA, tiempoTotal);
+
+        return; // 🚫 No continúa a descargas
+    }
+
+    /* ======================================================
+       ⬇️ FLUJO NORMAL DE DESCARGA
+       ====================================================== */
+
     const años = obtenerAños(MODO_EJECUCION);
     const periodos = obtenerPeriodos(MODO_EJECUCION);
 
@@ -196,12 +264,15 @@ async function ejecutar() {
                 });
             }
         }
+
         const tiempoProveedor = ((Date.now() - inicioProveedor) / 1000).toFixed(2);
         logFinProveedor(proveedor.razon_social, tiempoProveedor);
     }
+
     const tiempoTotal = ((Date.now() - inicioEmpresa) / 1000).toFixed(2);
     logFinEmpresa(NOMBRE_EMPRESA, tiempoTotal);
 }
+
 
 /* ======================================================
     INICIO DEL PROGRAMA

@@ -14,23 +14,39 @@ export function normalizarTexto(texto) {
         .toLowerCase();
 }
 
-export function normalizarNombreProveedor(razonSocial) {
-    let texto = razonSocial
+export function normalizarRazonSocialFiscal(texto) {
+    return texto
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/,/g, "")
+        .replace(/\./g, "_")
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9_]/g, "")
+        .replace(/_+/g, "_")
+        .trim()
+        .toLowerCase();
+}
+
+export function obtenerBaseFiscal(texto) {
+    return texto
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
-        .trim();
+        .replace(/s\.?a\.?\s*de\s*c\.?v\.?/g, "")
+        .replace(/[^a-z0-9]/g, "");
+}
 
-    // 🔹 Caso S.A. DE C.V. → s_a_de_c_v
-    texto = texto.replace(/\bs\.a\. de c\.v\.\b/gi, "s_a_de_c_v");
+export function obtenerNombreFiscalCanonico(texto, tipo = "empresa") {
+    const base = texto
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9\s]/g, "")
+        .trim()
+        .replace(/\s+/g, "_")
+        .toLowerCase();
 
-    // 🔹 Caso SA DE CV → sa_de_cv
-    texto = texto.replace(/\bsa de cv\b/gi, "sa_de_cv");
+    if (tipo === "empresa") return `${base}_sa_de_cv`;
+    if (tipo === "proveedor_puntos") return `${base}_s_a_de_c_v`;
 
-    // 🔹 Limpieza general
-    texto = texto
-        .replace(/[^a-z0-9\s_]/g, "")
-        .replace(/\s+/g, "_");
-
-    return texto;
+    return base;
 }

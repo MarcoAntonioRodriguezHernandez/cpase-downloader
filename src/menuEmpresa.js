@@ -1,3 +1,4 @@
+//src/menuEmpresa.js
 import inquirer from "inquirer";
 import { EMPRESAS } from "./empresas.js";
 
