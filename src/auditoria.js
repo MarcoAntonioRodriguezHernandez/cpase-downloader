@@ -4,6 +4,8 @@ import {debeEjecutar} from "./resume.js";
 import path from "path";
 import fs from "fs";
 import {escanearCarpetaLocal} from "./escaneo-local.js";
+import chalk from "chalk";
+import {logEmpresa, logError, logProveedor} from "./logger.js";
 
  /**
   * Realiza una auditoría de empleados a descargar por empresa
@@ -21,11 +23,11 @@ import {escanearCarpetaLocal} from "./escaneo-local.js";
      const resultados = [];
 
      console.log(`\n${"=".repeat(80)}`);
-     console.log(`🔍 AUDITORÍA DE EMPLEADOS - ${NOMBRE_EMPRESA}`);
+     logEmpresa(`🔍 AUDITORÍA - ${NOMBRE_EMPRESA}`);
      console.log(`${"=".repeat(80)}\n`);
 
      for (const proveedor of proveedores) {
-         console.log(`\n📋 Proveedor: ${proveedor.razon_social} (${proveedor.rfc})`);
+         logProveedor(proveedor.razon_social, proveedor.rfc);
 
          for (const año of años) {
              for (const periodo of periodos) {
@@ -46,9 +48,18 @@ import {escanearCarpetaLocal} from "./escaneo-local.js";
                          const mesNombre = new Date(año, periodo, 1).toLocaleDateString('es-MX', { month: 'long' });
 
                          console.log(`  └─ ${año} - ${mesNombre}: ${empleados.length} empleado(s)`);
+                         fs.appendFileSync(
+                             path.resolve("./logs", fs.readdirSync("./logs").sort().pop()),
+                             `  └─ ${año} - ${mesNombre}: ${empleados.length} empleado(s)\n`
+                         );
 
                          empleados.forEach(emp => {
-                             console.log(`     • ${emp.Nombre || 'Sin nombre'} (${emp.RFC || 'Sin RFC'})`);
+                             const msg = `     • ${emp.Nombre || 'Sin nombre'} (${emp.RFC || 'Sin RFC'})`;
+                             console.log(msg);
+                             fs.appendFileSync(
+                                 path.resolve("./logs", fs.readdirSync("./logs").sort().pop()),
+                                 msg + "\n"
+                             );
                          });
 
                          resultados.push({
@@ -66,7 +77,7 @@ import {escanearCarpetaLocal} from "./escaneo-local.js";
                          });
                      }
                  } catch (error) {
-                     console.error(`  └─ ❌ Error en ${año}/${periodo + 1}: ${error.message}`);
+                     logError(`${año}/${periodo + 1}`, error);
                  }
              }
          }
@@ -123,6 +134,12 @@ import {escanearCarpetaLocal} from "./escaneo-local.js";
      }
  }
 
+function escribirLog(mensaje) {
+    const logFile = path.resolve("./logs", fs.readdirSync("./logs").sort().pop());
+    const mensajeLimpio = mensaje.replace(/\x1b\[[0-9;]*m/g, '');
+    fs.appendFileSync(logFile, mensajeLimpio + "\n");
+}
+
  /**
   * Exporta los resultados de auditoría a un archivo JSON
   * @param {Array} resultados - Resultados de la auditoría
@@ -148,7 +165,10 @@ export function exportarAuditoria(resultados, nombreEmpresa) {
 
     fs.writeFileSync(rutaArchivo, JSON.stringify(resumen, null, 2));
 
-    console.log(`\n💾 Auditoría exportada: ${rutaArchivo}`);
+     const msg = `\n💾 Auditoría exportada: ${rutaArchivo}`;
+     console.log(msg);
+     escribirLog(msg);
+
 }
 
 /**
@@ -166,7 +186,9 @@ export async function compararConCarpetaLocal({
 
     const nombreEmpresaNormalizado = normalizarTexto(NOMBRE_EMPRESA);
 
-    console.log(`\n🔍 Comparando con carpeta local: ${baseDir}\n`);
+    const msgInicio = `🔍 Comparando con carpeta local: ${baseDir}`;
+    console.log(`\n${msgInicio}\n`);
+    escribirLog(msgInicio);
 
     for (const registro of esperados) {
         const rutaEsperada = [
@@ -181,10 +203,8 @@ export async function compararConCarpetaLocal({
         const archivosEnCarpeta = escanearCarpetaLocal(baseDir, rutaEsperada);
         const rutaCompleta = path.join(baseDir, ...rutaEsperada);
 
-        // Contar ocurrencias de cada empleado
-        const conteoEmpleados = {};
-        const indiceActual = {}; // Rastrear índice actual para cada empleado
-
+        // Contar empleados duplicados
+        const indiceActual = {};
         registro.empleados.forEach(emp => {
             if (!indiceActual[emp.nombre]) {
                 indiceActual[emp.nombre] = 1;
@@ -192,6 +212,13 @@ export async function compararConCarpetaLocal({
         });
 
         let faltantesEnPeriodo = 0;
+
+        const msgPeriodo = `📁 ${registro.proveedor} - ${registro.año}/${registro.mesNombre}`;
+        const msgRuta = `   Ruta: ${rutaCompleta}`;
+        console.log(chalk.cyan(`\n${msgPeriodo}`));
+        console.log(chalk.gray(msgRuta + "\n"));
+        escribirLog(msgPeriodo);
+        escribirLog(msgRuta);
 
         for (const empleado of registro.empleados) {
             totalRevisados++;
@@ -202,7 +229,7 @@ export async function compararConCarpetaLocal({
 
             const sufijo = indiceActual[empleado.nombre];
 
-            // 🔍 ARCHIVOS ESPERADOS (3 archivos por empleado)
+            // 3 archivos esperados
             const archivosEsperados = [
                 `${nombreBase}_${sufijo}.pdf`,
                 `${nombreBase}_${sufijo}.xml`,
@@ -214,7 +241,22 @@ export async function compararConCarpetaLocal({
             );
 
             if (archivosFaltantes.length > 0) {
+                // ❌ EMPLEADO CON ARCHIVOS FALTANTES
                 faltantesEnPeriodo++;
+                const msgEmpleado = `   ❌ ${empleado.nombre} (${empleado.rfc})`;
+                console.log(chalk.red(msgEmpleado));
+                escribirLog(msgEmpleado);
+
+                archivosFaltantes.forEach(archivo => {
+                    const msgFalta = `      └─ Falta: ${archivo}`;
+                    console.log(chalk.red(msgFalta));
+                    escribirLog(msgFalta);
+                });
+
+                const msgUUID = `      🔑 UUID: ${empleado.uuid}`;
+                console.log(chalk.gray(msgUUID + "\n"));
+                escribirLog(msgUUID);
+
                 faltantes.push({
                     proveedor: registro.proveedor,
                     año: registro.año,
@@ -225,37 +267,61 @@ export async function compararConCarpetaLocal({
                     archivosFaltantes,
                     rutaEsperada: rutaCompleta
                 });
-
-                console.log(`  ❌ ${empleado.nombre} (${empleado.rfc})`);
-                console.log(`     📁 Ruta: ${rutaCompleta}`);
-                archivosFaltantes.forEach(archivo => {
-                    console.log(`     ❌ Falta: ${archivo}`);
-                });
-                console.log(`     🔑 UUID: ${empleado.uuid}\n`);
             } else {
+                // ✅ EMPLEADO COMPLETO (logs compactos)
                 totalEncontrados++;
+                const msgEmpleado = `   ✓ ${empleado.nombre} (${empleado.rfc})`;
+                console.log(chalk.green(msgEmpleado));
+                escribirLog(msgEmpleado);
+
+                archivosEsperados.forEach(archivo => {
+                    const msgArchivo = `      └─ ${archivo}`;
+                    console.log(chalk.green(msgArchivo));
+                    escribirLog(msgArchivo);
+                });
+                console.log();
             }
 
-            // Decrementar índice para próxima ocurrencia
             indiceActual[empleado.nombre]++;
         }
 
+        // Resumen del período
         const emoji = faltantesEnPeriodo === 0 ? "✅" : "⚠️";
         const stats = `${registro.cantidadEmpleados - faltantesEnPeriodo}/${registro.cantidadEmpleados}`;
 
-        console.log(`${emoji} ${registro.proveedor} - ${registro.año}/${registro.mesNombre} (${stats})`);
+        const msgResumen = `${emoji} Resumen: ${stats} empleados completos`;
+        console.log(chalk.bold(msgResumen));
+        escribirLog(msgResumen);
 
         if (faltantesEnPeriodo > 0) {
-            console.log(`   └─ Faltan ${faltantesEnPeriodo} empleado(s) con archivos incompletos\n`);
+            const msgFaltantes = `   └─ ${faltantesEnPeriodo} empleado(s) con archivos faltantes`;
+            console.log(chalk.yellow(msgFaltantes + "\n"));
+            escribirLog(msgFaltantes);
         }
     }
 
-    console.log(`\n${"=".repeat(80)}`);
-    console.log(`📊 RESUMEN DE COMPARACIÓN`);
-    console.log(`${"=".repeat(80)}`);
-    console.log(`✅ Empleados completos: ${totalEncontrados}/${totalRevisados}`);
-    console.log(`❌ Empleados con archivos faltantes: ${faltantes.length}`);
-    console.log(`${"=".repeat(80)}\n`);
+    // Resumen final
+    const separador = "=".repeat(80);
+    console.log(`\n${separador}`);
+    escribirLog(separador);
+
+    const tituloResumen = "📊 RESUMEN DE COMPARACIÓN";
+    console.log(chalk.bold.cyan(tituloResumen));
+    escribirLog(tituloResumen);
+
+    console.log(separador);
+    escribirLog(separador);
+
+    const msgCompletos = `✅ Empleados completos: ${totalEncontrados}/${totalRevisados}`;
+    console.log(chalk.green(msgCompletos));
+    escribirLog(msgCompletos);
+
+    const msgFaltantes = `❌ Empleados con archivos faltantes: ${faltantes.length}`;
+    console.log(chalk.red(msgFaltantes));
+    escribirLog(msgFaltantes);
+
+    console.log(separador + "\n");
+    escribirLog(separador);
 
     return { faltantes };
 }
@@ -276,6 +342,10 @@ export function exportarAuditoriaComparativa(faltantes, extras, nombreEmpresa) {
 
     fs.writeFileSync(rutaArchivo, JSON.stringify(reporte, null, 2));
 
-    console.log(`\n💾 Auditoría Drive exportada: ${rutaArchivo}`);
-    console.log(`❌ CFDIs faltantes: ${faltantes.length}`);
+    const msg1 = `💾 Auditoría Drive exportada: ${rutaArchivo}`;
+    const msg2 = `❌ CFDIs faltantes: ${faltantes.length}`;
+    console.log(`\n${msg1}`);
+    escribirLog(msg1);
+    console.log(msg2);
+    escribirLog(msg2);
 }
